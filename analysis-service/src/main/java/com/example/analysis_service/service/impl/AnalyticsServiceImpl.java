@@ -10,6 +10,8 @@ import com.example.analysis_service.repository.MonthlyRepository;
 import com.example.analysis_service.service.AnalyticsService;
 import com.example.analysis_service.service.CacheService;
 import com.example.data_service.annotation.UseReplica;
+import com.example.data_service.context.DBType;
+import com.example.data_service.context.DbContextHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,7 +21,6 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Service
 @UseReplica
@@ -67,7 +68,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     @Override
     public List<MonthlyDBDto> getFullMonthlySales() {
         logger.info("Fetching full monthly sales data.");
-        materializedViewUpdater.refreshMonthly();
+        refreshWithPrimaryDataSource(() -> materializedViewUpdater.refreshMonthly());
         return fetchAndCacheMonthlySales();
     }
 
@@ -96,7 +97,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         LocalDate today = LocalDate.now();
         final String cacheKey = RedisCacheKeys.dailySalesKey(today);
 
-        materializedViewUpdater.refreshDaily(today);
+        refreshWithPrimaryDataSource(() -> materializedViewUpdater.refreshDaily(today));
 
         try {
             List<DailyDBDto> data = dailyRepository.findDailyFromMatViewByDate(today);
@@ -111,8 +112,19 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     @Override
     public List<DailyDBDto> getFullDailySales() {
         logger.info("Fetching full daily sales data.");
-        materializedViewUpdater.refreshDailyFull();
+        refreshWithPrimaryDataSource(() -> materializedViewUpdater.refreshDailyFull());
         return fetchAndCacheDailySales();
+    }
+
+    private void refreshWithPrimaryDataSource(Runnable operation) {
+        DBType currentDbType = DbContextHolder.get();
+
+        try {
+            DbContextHolder.set(DBType.PRIMARY);
+            operation.run();
+        } finally {
+            DbContextHolder.set(currentDbType);
+        }
     }
 
 
