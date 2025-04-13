@@ -1,14 +1,21 @@
 spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/your_database_name
-    username: username
-    password: password
-    driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: 10
+  spring:
+    datasource:
+      primary:
+        url: jdbc:postgresql://primary-host:5432/RetailDb
+        username: user
+        password: pass
+
+      replicas:
+        - url: jdbc:postgresql://replica1-host:5432/RetailDbReplic
+          username: user
+          password: pass
+#        - url: jdbc:postgresql://replica2-host:5432/db // ????????? ?????????????? ???????
+#          username: user
+#          password: pass
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
     show-sql: true
     properties:
       hibernate:
@@ -17,8 +24,6 @@ spring:
 
   logging:
     level:
-      org.hibernate.SQL: DEBUG
-      org.hibernate.type.descriptor.sql: TRACE
+      org.hibernate.SQL: WARN
+      org.hibernate.type.descriptor.sql: WARN
 
-  transaction:
-    isolation-level: READ_COMMITTED

@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <!-- Создание таблиц -->
+    <changeSet id="1" author="Ivan">
+
+        <createTable tableName="actuals">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="delivery_address_code" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="material_no" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="date" type="date"/>
+            <column name="units" type="decimal(19,4)"/>
+            <column name="actual_price" type="decimal(19,4)"/>
+            <column name="promo_tag" type="varchar(50)"/>
+        </createTable>
+
+        <createTable tableName="customers">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="chain_name" type="varchar(255)"/>
+            <column name="address_name" type="varchar(255)"/>
+            <column name="address_code" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createTable tableName="products">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="material_no" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="varchar(255)"/>
+            <column name="category_code" type="varchar(50)"/>
+            <column name="category_name" type="varchar(255)"/>
+        </createTable>
+
+        <createTable tableName="price">
+            <column name="id" type="bigint">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="material_no" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="chain_name" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="regular_price_per_unit" type="decimal(19,4)"/>
+        </createTable>
+
+    </changeSet>
+
+    <!-- Создание индексов -->
+    <changeSet id="2" author="Ivan">
+
+        <createIndex indexName="idx_actuals_delivery_address_code_material_no" tableName="actuals">
+            <column name="delivery_address_code"/>
+            <column name="material_no"/>
+        </createIndex>
+        <createIndex indexName="idx_actuals_date" tableName="actuals">
+            <column name="date"/>
+        </createIndex>
+
+        <createIndex indexName="idx_customers_address_code" tableName="customers">
+            <column name="address_code"/>
+        </createIndex>
+
+        <createIndex indexName="idx_products_material_no" tableName="products">
+            <column name="material_no"/>
+        </createIndex>
+
+        <createIndex indexName="idx_price_material_no_chain_name" tableName="price">
+            <column name="material_no"/>
+            <column name="chain_name"/>
+        </createIndex>
+
+    </changeSet>
+
+    <!-- Создание материализованной таблицы -->
+    <changeSet id="3" author="Ivan">
+        <sql>
+            CREATE MATERIALIZED VIEW monthly_materialized AS
+            SELECT
+            row_number() OVER () AS id,
+            c.chain_name,
+            p.category_name,
+            date_trunc('month', a.date) AS month,
+            SUM(CASE WHEN a.promo_tag = 'REGULAR' THEN a.units ELSE 0 END) AS regular_units,
+            SUM(CASE WHEN a.promo_tag = 'PROMO' THEN a.units ELSE 0 END) AS promo_units,
+            CASE
+            WHEN SUM(a.units) = 0 THEN 0
+            ELSE ROUND(SUM(CASE WHEN a.promo_tag = 'PROMO' THEN a.units ELSE 0 END) * 100.0 / SUM(a.units), 2)
+            END AS promo_percentage
+            FROM actuals a
+            JOIN customers c ON a.delivery_address_code = c.address_code
+            JOIN products p ON a.material_no = p.material_no
+            GROUP BY c.chain_name, p.category_name, date_trunc('month', a.date);
+        </sql>
+
+        <sql>
+            CREATE INDEX idx_monthly_materialized_month
+            ON monthly_materialized (month);
+        </sql>
+
+        <sql>
+            CREATE INDEX idx_monthly_materialized_chain_month
+            ON monthly_materialized (chain_name, month);
+        </sql>
+    </changeSet>
+
+    <changeSet id="4" author="Ivan">
+        <sql>
+            CREATE MATERIALIZED VIEW daily_materialized AS
+            SELECT
+            row_number() OVER () AS id,
+            c.chain_name,
+            p.category_name,
+            p.material_no,
+            a.date AS date,
+            SUM(CASE WHEN a.promo_tag = 'REGULAR' THEN a.units ELSE 0 END) AS regular_units,
+            SUM(CASE WHEN a.promo_tag = 'PROMO' THEN a.units ELSE 0 END) AS promo_units,
+            CASE
+            WHEN SUM(a.units) = 0 THEN 0
+            ELSE ROUND(SUM(CASE WHEN a.promo_tag = 'PROMO' THEN a.units ELSE 0 END) * 100.0 / SUM(a.units), 2)
+            END AS promo_percentage
+            FROM actuals a
+            JOIN customers c ON a.delivery_address_code = c.address_code
+            JOIN products p ON a.material_no = p.material_no
+            GROUP BY c.chain_name, p.category_name, p.material_no, a.date;
+        </sql>
+
+        <sql>
+            CREATE INDEX idx_daily_materialized_date ON daily_materialized (date);
+        </sql>
+        <sql>
+            CREATE INDEX idx_daily_materialized_chain_date ON daily_materialized (chain_name, date);
+        </sql>
+        <sql>
+            CREATE INDEX idx_daily_materialized_material_no ON daily_materialized (material_no);
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>
